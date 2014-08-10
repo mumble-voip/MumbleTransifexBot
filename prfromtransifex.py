@@ -39,13 +39,14 @@ import ConfigParser
 from argparse import ArgumentParser
 from logging import basicConfig, getLogger, DEBUG, INFO, WARNING, ERROR, debug, error, info, warning, exception
 from github import Github
-from plumbum.cmd import git, tx, cd
-from plumbum import ProcessExecutionError
+from plumbum.cmd import git, tx
+from plumbum import ProcessExecutionError, local
 import sys
 import os
+import re
 
 def getExistingPullRequest(g, user, repo):
-    s = g.search("type:pr is:open repo:%(repo)s author:%(user)s" % {'user': user,
+    s = g.search_issues("type:pr is:open repo:%(repo)s author:%(user)s" % {'user': user,
                                                                     'repo': repo})
     pullrequests = s.get_page(0)
     total = len(pullrequests)
@@ -95,6 +96,7 @@ if __name__ == "__main__":
     
     user = cfg.get('github', 'user')
     password = cfg.get('github', 'password')
+    email = cfg.get('github', 'email')
     
     mode = cfg.get('transifex', 'mode')
     minpercent = cfg.get('transifex', 'minpercent')
@@ -118,17 +120,24 @@ if __name__ == "__main__":
     translationstemplate = cfg.get('misc', 'template')
     additionaltsfiles = cfg.get('misc', 'additionaltsfiles')
     
-    if args.setup:
+    if args.setup or not os.path.exists(wr_path):
         info("Setting up git repo")
         debug(git["clone", wr_url, wr_path]())
-        debug(git["remote", "add", "target", tr_url]())
+        with local.cwd(wr_path):
+            debug(git["config", "user.name", user]())
+            debug(git["config", "user.email", email]())
+            debug(git["remote", "add", "target", tr_url]())
+            
         info("Done")
-        sys.exit(0)
+        
+        if args.setup:
+            sys.exit(0)
         
     info("Checking for pending PR")
     g = Github(user, password)
-    pr = getExistingPullRequest(user = user,
-                                repo = tr_repo)
+    pr = getExistingPullRequest(g,
+                                user = user,
+                                repo = tr_owner + "/" + tr_repo)
     if pr:
         info("Already have pending PR %d", pr.number)
         # As long as we have a pending PR we want to make sure we
@@ -145,42 +154,43 @@ if __name__ == "__main__":
         remote = "target"
         branch = tr_branch 
 
-    info("Updating remote '%s'", remote)
-    debug(git["fetch", remote]()))
-    info("Resetting to branch '%s'", branch
-    debug(git["reset", remote + "/" + branch, "--hard"]())
-    info("Cleaning repository")
-    debug(git["clean", "-f", "-x", "-d"]())
-    info("Pulling translations")
-    
-    txout = tx["pull", "-f", "--mode=" + mode, "--minimum-perc" + minpercent]()
-    debug(txout)
-    
-    tfilepath = os.path.join(wr_path, translationsfile)
-    info("Updating translations listing file '%s'", tfilepath)
-    paths, files = zip(*re.findall(r"^\s->\s[\w_]+:\s([\w/\_]+/([\w_]+\.ts))$", t, flags=re.MULTILINE))
-    debug(git["add"](*paths))
-    translations = additionaltsfiles + " ".join(files)"
-    
-    with open(tfilepath, "w") as f:
-        f.write(translationstemplate % {'files': translations})
+    with local.cwd(wr_path):
+        info("Updating remote '%s'", remote)
+        debug(git["fetch", remote]())
+        info("Resetting to branch '%s'", branch)
+        debug(git["reset", remote + "/" + branch, "--hard"]())
+        info("Cleaning repository")
+        debug(git["clean", "-f", "-x", "-d"]())
+        info("Pulling translations")
         
-    debug(git["add"](tfilepath))
-
-    debug("Checking for modifications")
-    changed, changedfiles, _ = git["diff", "--cached", "--name-only", "--exit-code"].run()
-    if not changed:
-        info("No changes to translations, done")
-        sys.exit(0)
+        txout = tx["pull", "-f", "-a", "--mode=" + mode, "--minimum-perc=" + minpercent]()
+        debug(txout)
         
-    debug("Changed files: %s", " ".join(os.linesep.split(changedfiles)))
-
-    info("Things changed & force pushing")
-    debug(git["commit", "-m", pr_commit % {'mode': mode,
-                                           'minpercent': minpercent,
-                                           'langcount': len(files)}]())
+        tfilepath = os.path.join(wr_path, translationsfile)
+        info("Updating translations listing file '%s'", tfilepath)
+        paths, files = zip(*re.findall(r"^\s->\s[\w_]+:\s([\w/\_]+/([\w_]+\.ts))$", txout, flags=re.MULTILINE))
+        debug(git["add"](*paths))
+        translations = additionaltsfiles + " " + (" ".join(sorted(files)))
+        
+        with open(tfilepath, "w") as f:
+            f.write(translationstemplate % {'files': translations})
+            
+        debug(git["add"](tfilepath))
     
-    debug(git["push", "-f", "origin", wr_branch]())
+        debug("Checking for modifications")
+        changed, changedfiles, _ = git["diff", "--cached", "--name-only", "--exit-code"].run(retcode=(0,1))
+        if not changed:
+            info("No changes to translations, done")
+            sys.exit(0)
+            
+        debug("Changed files: %s", " ".join(os.linesep.split(changedfiles)))
+    
+        info("Things changed & force pushing")
+        debug(git["commit", "-m", pr_commit % {'mode': mode,
+                            'minpercent': minpercent,
+                            'langcount': len(files)}]())
+        
+        debug(git["push", "-f", "origin", wr_branch]())
     
     if not pr:
         info("No existing PR, creating new one")
