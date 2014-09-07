@@ -30,7 +30,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 """
-Meant to be run regularily as part of a root cronjob. Pulls updated translations from
+Meant to be run regularily as part of a user cronjob. Pulls updated translations from
 transifex and if anything relevant changed creates a pull request with the translation
 update to the mumble master repository.
 """
