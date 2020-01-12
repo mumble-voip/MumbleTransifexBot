@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8
 
 # Copyright (C) 2014 Stefan Hacker <dd0t@users.sourceforge.net>
@@ -35,7 +35,7 @@ transifex and if anything relevant changed creates a pull request with the trans
 update to the mumble master repository.
 """
 
-import ConfigParser
+import configparser
 from argparse import ArgumentParser
 from logging import basicConfig, getLogger, DEBUG, INFO, WARNING, ERROR, debug, error, info, warning, exception
 from github import Github
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     
     debug("Loading configuration from: %s", args.config)
 
-    cfg = ConfigParser.RawConfigParser()
+    cfg = configparser.RawConfigParser(comment_prefixes=(';'))
     cfg.read(args.config)
     
     user = cfg.get('github', 'user')
