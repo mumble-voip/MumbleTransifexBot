@@ -95,7 +95,11 @@ if __name__ == "__main__":
     cfg.read(args.config)
     
     user = cfg.get('github', 'user')
-    password = cfg.get('github', 'password')
+    if cfg.has_option('github', 'password'):
+        error('Use of passwords is deprecated. Configure a PAT instead.')
+        sys.exit(1)
+
+    pat = cfg.get('github', 'pat')
     email = cfg.get('github', 'email')
     
     mode = cfg.get('transifex', 'mode')
@@ -136,7 +140,7 @@ if __name__ == "__main__":
             sys.exit(0)
         
     info("Checking for pending PR")
-    g = Github(user, password)
+    g = Github(pat)
     pr = getExistingPullRequest(g,
                                 user = user,
                                 repo = tr_owner + "/" + tr_repo)
