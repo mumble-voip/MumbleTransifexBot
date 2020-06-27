@@ -173,7 +173,7 @@ if __name__ == "__main__":
         debug(txout)
         
         # Add all .ts files tx pull got to repo
-        paths, files = zip(*re.findall(r"^\s->\s[\w_]+:\s([\w/\_]+/([\w_]+\.ts))$", txout, flags=re.MULTILINE))
+        paths, files = zip(*re.findall(r"s*->\s*[\w_]+:\s*([\w/\_]+\/([\w_]+\.ts))\s*$", txout, flags=re.MULTILINE))
         debug(git["add"](*paths))
         
         # Add additional ts files not in control of transifex (e.g. English source translation)
